@@ -197,7 +197,7 @@ st.markdown("Acompanhamento de indicadores educacionais")
 
 # FILTROS LATERAIS
 st.sidebar.markdown("---")
-st.sidebar.header("🎛️ Filtros de Análise")
+st.sidebar.header("🎚️ Filtros de Análise")
 
 for key in ['filtro_cons', 'filtro_esp', 'filtro_coord', 'filtro_alfab']:
     if key not in st.session_state: st.session_state[key] = 'Todos'
@@ -219,7 +219,7 @@ for col, label, key, default in filtros:
     selecionado = st.sidebar.selectbox(label, opcoes, key=key)
     if selecionado != default: df_filtrado = df_filtrado[df_filtrado[col] == selecionado]
 
-st.sidebar.info(f"Mostrando dados de **{df_filtrado.shape[0]}** alunos matriculados.")
+st.sidebar.info(f"Mostrando dados de **{df_filtrado.shape[0]}** alfabetizandos matriculados.")
 
 # SEPARAÇÃO MATRICULADOS VS ATIVOS
 df_ativos = df_filtrado[df_filtrado['status_alfabetizando'] != 'EVADIDO'].copy()
@@ -231,7 +231,7 @@ st.markdown("---")
 st.subheader("🎯 Visão Geral, Engajamento e Retenção")
 c1, c2, c3, c4, c5 = st.columns(5)
 c1.metric("Total Matriculados", f"{total_mat}")
-c2.metric("Alunos Ativos", f"{total_atv}")
+c2.metric("Alfabetizandos Ativos", f"{total_atv}")
 c3.metric("Taxa Desistência", f"{(evadidos/total_mat*100) if total_mat > 0 else 0:.1f}%", f"{evadidos} evadidos" if evadidos > 0 else "Nenhuma", delta_color="inverse")
 c4.metric("Frequência Média", f"{df_ativos['taxa_frequencia'].mean() if total_atv > 0 else 0:.1f}%")
 c5.metric("Turmas Ativas", f"{df_filtrado['turma'].nunique()}")
@@ -256,7 +256,7 @@ if 'turma_municipio' in df_ativos.columns and 'dt_nascimento' in df_ativos.colum
 
     with cd2:
         df_muni = df_ativos.groupby('turma_municipio').agg(total_alunos=('alfabetizando', 'count'), total_turmas=('turma', 'nunique')).reset_index().sort_values('total_alunos')
-        fig_muni = px.bar(df_muni, y='turma_municipio', x='total_alunos', orientation='h', title="Alunos e Turmas por Município", text='total_alunos', hover_data={'total_turmas': True, 'turma_municipio': False}, color_discrete_sequence=[COLORS['primary']])
+        fig_muni = px.bar(df_muni, y='turma_municipio', x='total_alunos', orientation='h', title="Alfabetizandos e Turmas por Município", text='total_alunos', hover_data={'total_turmas': True, 'turma_municipio': False}, color_discrete_sequence=[COLORS['primary']])
         fig_muni.update_layout(height=max(400, len(df_muni)*35), xaxis_title=None, yaxis_title=None)
         st.plotly_chart(fig_muni, use_container_width=True)
 
@@ -307,7 +307,7 @@ col_niveis = [col for col in df_ativos.columns if col.endswith('_result_nivel')]
 if col_niveis:
     st.markdown("---")
     st.subheader("📈 Desempenho e Aplicação de Avaliações")
-    dic_aval = {'diag_entr_result_nivel': 'Diagnóstica', 'forma_1_result_nivel': 'Form. 1', 'forma_2_result_nivel': 'Form. 2', 'forma_3_result_nivel': 'Form. 3', 'forma_4_result_nivel': 'Form. 4', 'diag_said_result_nivel': 'Saída'}
+    dic_aval = {'diag_entr_result_nivel': 'Diagnóstica', 'forma_1_result_nivel': 'Formativa 1', 'forma_2_result_nivel': 'Formativa 2', 'forma_3_result_nivel': 'Formativa 3', 'forma_4_result_nivel': 'Formativa 4', 'diag_said_result_nivel': 'Saída'}
     opc_aval = {k: v for k, v in dic_aval.items() if k in col_niveis}
     aval_sel = st.selectbox("Selecione a Avaliação:", options=list(opc_aval.keys()), format_func=lambda x: opc_aval[x])
     
@@ -318,7 +318,7 @@ if col_niveis:
         cont_niv = df_niv[aval_sel].value_counts().reset_index().rename(columns={aval_sel: 'Nível', 'count': 'Qtd'})
         cont_niv['Nível'] = pd.Categorical(cont_niv['Nível'], categories=['N1','N2','N3','N4','Sem dados'], ordered=True)
         fig_n = px.bar(cont_niv.sort_values('Nível'), x='Nível', y='Qtd', color='Nível', color_discrete_map=COLORS['niveis'], text_auto=True, title=f"Níveis - {opc_aval[aval_sel]}")
-        fig_n.update_layout(showlegend=False, xaxis_title=None, yaxis_title="Alunos")
+        fig_n.update_layout(showlegend=False, xaxis_title=None, yaxis_title="Alfabetizandos")
         st.plotly_chart(fig_n, use_container_width=True)
         
     with ca2:
@@ -332,7 +332,7 @@ if col_niveis:
         col_ipa = f"ipa_{aval_sel.split('_result')[0]}_classificacao"
         if col_ipa in df_ativos.columns:
             st.markdown("---")
-            st.subheader(f"🏆 IPA - {opc_aval[aval_sel]}")
+            st.subheader(f"🏆 Índice de Progressão de Aprendizagem (IPA) - {opc_aval[aval_sel]}")
             df_ipa = df_ativos[df_ativos[col_ipa] != 'Sem Dados'].copy()
             cont_ipa = df_ipa[col_ipa].value_counts().reset_index().rename(columns={col_ipa: 'IPA', 'count': 'Qtd'})
             cont_ipa['IPA'] = pd.Categorical(cont_ipa['IPA'], categories=['Iniciante', 'Em desenvolvimento', 'Alfabetizado(a)', 'Alfabetização consolidada'], ordered=True)
@@ -350,7 +350,7 @@ if 'turma_municipio' in df_ativos.columns:
     co1, co2 = st.columns(2)
     with co1:
         df_tr = df_ativos.groupby(['turma_municipio', 'turma']).size().reset_index(name='qtd').groupby('turma_municipio')['qtd'].mean().reset_index().sort_values('qtd', ascending=False)
-        fig_tr = px.bar(df_tr, x='turma_municipio', y='qtd', title="Média de Alunos por Turma", text_auto='.1f', color_discrete_sequence=[COLORS['primary']])
+        fig_tr = px.bar(df_tr, x='turma_municipio', y='qtd', title="Média de Alfabetizandos por Turma", text_auto='.1f', color_discrete_sequence=[COLORS['primary']])
         fig_tr.add_hline(y=15, line_dash="dash", line_color=COLORS['risco_alto'], annotation_text="Mín (15)")
         fig_tr.add_hline(y=27, line_dash="dash", line_color=COLORS['risco_alto'], annotation_text="Máx (27)")
         fig_tr.update_layout(xaxis_title=None, yaxis_title=None)
@@ -367,7 +367,7 @@ if 'turma_municipio' in df_ativos.columns:
 
 # TABELA FINAL E EXPORTAÇÃO
 st.markdown("---")
-st.subheader("🔍 Detalhamento de Alunos Ativos e Ação de Monitoramento")
+st.subheader("🔍 Detalhamento de Alfabetizandos Ativos e Ação de Monitoramento")
 cols_disp = ['alfabetizando', 'turma', 'status_alfabetizando', 'taxa_frequencia', 'risco_frequencia'] + [col for col in ['diag_entr_result_nivel', 'forma_1_result_nivel', 'forma_2_result_nivel', 'forma_3_result_nivel', 'forma_4_result_nivel', 'diag_said_result_nivel'] if col in df_ativos.columns]
 df_tab = df_ativos[cols_disp].rename(columns={'alfabetizando': 'Nome do Alfabetizando', 'turma': 'Turma', 'status_alfabetizando': 'Status', 'taxa_frequencia': 'Frequência (%)', 'risco_frequencia': 'Alerta de Risco', 'diag_entr_result_nivel': 'Diag. Entrada', 'forma_1_result_nivel': 'Form. 1', 'forma_2_result_nivel': 'Form. 2', 'forma_3_result_nivel': 'Form. 3', 'forma_4_result_nivel': 'Form. 4', 'diag_said_result_nivel': 'Aval. Saída'})
 
