@@ -192,7 +192,7 @@ df_ativos = df_filtrado[df_filtrado['status_alfabetizando'] != 'EVADIDO'].copy()
 total_mat, total_atv = df_filtrado.shape[0], df_ativos.shape[0]
 evadidos = total_mat - total_atv
 
-# KPIS
+# Indicadores Gerais
 st.markdown("---")
 st.subheader("🎯 Visão Geral, Engajamento e Retenção")
 c1, c2, c3, c4, c5 = st.columns(5)
@@ -241,9 +241,9 @@ if 'socio_entr_q1' in df_ativos.columns and 'socio_entr_q9' in df_ativos.columns
         'Reconhece claramente e relata usos práticos': 'Reconhece claramente', 'Reconhece em algumas situações': 'Reconhece às vezes', 'Não reconhece': 'Não reconhece'
     }
     
-    cores_socio = {k: COLORS['secondary'] for k in ['Alta Motivação', 'Frequentes e pontuais', 'Freq. sem faltas', 'Realiza com autonomia', 'Tenta com iniciativa', 'Aceita o erro', 'Participa ativamente', 'Reconhece claramente']}
-    cores_socio.update({k: COLORS['risco_medio'] for k in ['Interesse oscilante', 'Freq. com faltas', 'Realiza com ajuda', 'Tenta com apoio', 'Frustração', 'Participa se estimulado', 'Reconhece às vezes']})
-    cores_socio.update({k: COLORS['risco_alto'] for k in ['Desmotivação', 'Depende de ajuda', 'Insegurança', 'Desiste facilmente', 'Evita interações', 'Não reconhece']})
+    cores_socio = {k: COLORS['secondary'] for k in ['Alta Motivação', 'Frequentes e pontuais', 'Realiza com autonomia', 'Tenta com iniciativa', 'Aceita o erro', 'Participa ativamente', 'Reconhece claramente']}
+    cores_socio.update({k: COLORS['risco_medio'] for k in ['Interesse oscilante', 'Freq. sem faltas', 'Realiza com ajuda', 'Tenta com apoio', 'Frustração', 'Participa se estimulado', 'Reconhece às vezes']})
+    cores_socio.update({k: COLORS['risco_alto'] for k in ['Desmotivação', 'Freq. com faltas', 'Depende de ajuda', 'Insegurança', 'Desiste facilmente', 'Evita interações', 'Não reconhece']})
 
     titulos = ["1. Motivação", "2. Assiduidade", "3. Autonomia", "4. Iniciativa", "5. Persistência", "6. Participação", "7. Usos Práticos"]
     cols_q = [f'socio_entr_q{i}' for i in range(1, 8)]
