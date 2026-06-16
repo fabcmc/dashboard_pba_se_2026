@@ -368,8 +368,8 @@ if 'turma_municipio' in df_ativos.columns:
 # TABELA FINAL E EXPORTAÇÃO
 st.markdown("---")
 st.subheader("🔍 Detalhamento de Alunos Ativos e Ação de Monitoramento")
-cols_disp = ['cpf', 'alfabetizando', 'turma', 'status_alfabetizando', 'taxa_frequencia', 'risco_frequencia'] + [col for col in ['diag_entr_result_nivel', 'forma_1_result_nivel', 'forma_2_result_nivel', 'forma_3_result_nivel', 'forma_4_result_nivel', 'diag_said_result_nivel'] if col in df_ativos.columns]
-df_tab = df_ativos[cols_disp].rename(columns={'cpf': 'CPF', 'alfabetizando': 'Nome do Aluno', 'turma': 'Turma', 'status_alfabetizando': 'Status', 'taxa_frequencia': 'Frequência (%)', 'risco_frequencia': 'Alerta de Risco', 'diag_entr_result_nivel': 'Diag. Entrada', 'forma_1_result_nivel': 'Form. 1', 'forma_2_result_nivel': 'Form. 2', 'forma_3_result_nivel': 'Form. 3', 'forma_4_result_nivel': 'Form. 4', 'diag_said_result_nivel': 'Aval. Saída'})
+cols_disp = ['alfabetizando', 'turma', 'status_alfabetizando', 'taxa_frequencia', 'risco_frequencia'] + [col for col in ['diag_entr_result_nivel', 'forma_1_result_nivel', 'forma_2_result_nivel', 'forma_3_result_nivel', 'forma_4_result_nivel', 'diag_said_result_nivel'] if col in df_ativos.columns]
+df_tab = df_ativos[cols_disp].rename(columns={'alfabetizando': 'Nome do Alfabetizando', 'turma': 'Turma', 'status_alfabetizando': 'Status', 'taxa_frequencia': 'Frequência (%)', 'risco_frequencia': 'Alerta de Risco', 'diag_entr_result_nivel': 'Diag. Entrada', 'forma_1_result_nivel': 'Form. 1', 'forma_2_result_nivel': 'Form. 2', 'forma_3_result_nivel': 'Form. 3', 'forma_4_result_nivel': 'Form. 4', 'diag_said_result_nivel': 'Aval. Saída'})
 
 st.dataframe(aplicar_estilo_tabela(df_tab), use_container_width=True, hide_index=True, height=450)
 
