@@ -88,7 +88,7 @@ def aplicar_estilo_tabela(df):
     return styler
 
 def limpar_filtros():
-    for chave in ['filtro_cons', 'filtro_esp', 'filtro_coord', 'filtro_alfab']:
+    for chave in ['filtro_municipio', 'filtro_cons', 'filtro_esp', 'filtro_coord', 'filtro_alfab']:
         st.session_state[chave] = 'Todos'
     st.session_state['filtro_turma'] = 'Todas'
 
@@ -189,16 +189,20 @@ st.markdown("Acompanhamento de indicadores educacionais")
 
 # FILTROS LATERAIS
 st.sidebar.markdown("---")
-st.sidebar.header("🎚️ Filtros de Análise")
+st.sidebar.header("🎛️ Filtros de Análise")
 
-for key in ['filtro_cons', 'filtro_esp', 'filtro_coord', 'filtro_alfab']:
+# 1. Inicializamos a memória incluindo o filtro_municipio
+for key in ['filtro_municipio', 'filtro_cons', 'filtro_esp', 'filtro_coord', 'filtro_alfab']:
     if key not in st.session_state: st.session_state[key] = 'Todos'
 if 'filtro_turma' not in st.session_state: st.session_state['filtro_turma'] = 'Todas'
 
 st.sidebar.button("🔄 Limpar Todos os Filtros", on_click=limpar_filtros, use_container_width=True)
 
 df_filtrado = df_final.copy()
+
+# 2. Adicionamos a tupla do Município no topo da lista (antes do consultor)
 filtros = [
+    ('turma_municipio', 'Município:', 'filtro_municipio', 'Todos'),
     ('consultor', 'Consultor:', 'filtro_cons', 'Todos'),
     ('especialista', 'Especialista:', 'filtro_esp', 'Todos'),
     ('coordenador', 'Coordenador:', 'filtro_coord', 'Todos'),
@@ -211,7 +215,7 @@ for col, label, key, default in filtros:
     selecionado = st.sidebar.selectbox(label, opcoes, key=key)
     if selecionado != default: df_filtrado = df_filtrado[df_filtrado[col] == selecionado]
 
-st.sidebar.info(f"Mostrando dados de **{df_filtrado.shape[0]}** alfabetizandos matriculados.")
+st.sidebar.info(f"Mostrando dados de **{df_filtrado.shape[0]}** alunos matriculados.")
 
 # SEPARAÇÃO MATRICULADOS VS ATIVOS
 df_ativos = df_filtrado[df_filtrado['status_alfabetizando'] != 'EVADIDO'].copy()
