@@ -221,12 +221,33 @@ evadidos = total_mat - total_atv
 # Indicadores Gerais
 st.markdown("---")
 st.subheader("🎯 Visão Geral, Engajamento e Retenção")
-c1, c2, c3, c4, c5 = st.columns(5)
+
+# Cálculo de indicador: Alunos ativos com frequência inferior a 50%
+possiveis_desistentes = df_ativos[df_ativos['taxa_frequencia'] < 50].shape[0]
+
+# Criamos 6 colunas em vez de 5
+c1, c2, c3, c4, c5, c6 = st.columns(6)
+
 c1.metric("Total Matriculados", f"{total_mat}")
-c2.metric("Alfabetizandos Ativos", f"{total_atv}")
-c3.metric("Taxa Desistência", f"{(evadidos/total_mat*100) if total_mat > 0 else 0:.1f}%", f"{evadidos} evadidos" if evadidos > 0 else "Nenhuma", delta_color="inverse")
-c4.metric("Frequência Média", f"{df_ativos['taxa_frequencia'].mean() if total_atv > 0 else 0:.1f}%")
-c5.metric("Turmas Ativas", f"{df_filtrado['turma'].nunique()}")
+c2.metric("Alunos Ativos", f"{total_atv}")
+
+c3.metric(
+    "Taxa Desistência", 
+    f"{(evadidos/total_mat*100) if total_mat > 0 else 0:.1f}%", 
+    f"{evadidos} evadidos" if evadidos > 0 else "Nenhuma", 
+    delta_color="inverse"
+)
+
+# Possíveis Desistentes (Com alerta visual em vermelho se houver algum)
+c4.metric(
+    "Possíveis Desistentes", 
+    f"{possiveis_desistentes}", 
+    "Ação Imediata" if possiveis_desistentes > 0 else "Estável", 
+    delta_color="inverse"
+)
+
+c5.metric("Frequência Média", f"{df_ativos['taxa_frequencia'].mean() if total_atv > 0 else 0:.1f}%")
+c6.metric("Turmas Ativas", f"{df_filtrado['turma'].nunique()}")
 
 # DEMOGRÁFICO E TERRITORIAL
 if 'turma_municipio' in df_ativos.columns and 'dt_nascimento' in df_ativos.columns:
