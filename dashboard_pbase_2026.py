@@ -60,14 +60,31 @@ def criar_grafico_rosca(df_dados, coluna_dados, titulo, mapeamento, cores):
 
 def aplicar_estilo_tabela(df):
     styler = df.style
-    estilo_alerta = lambda x: 'background-color: #FFCDD2; color: #B71C1C; font-weight: bold;' if isinstance(x, str) and x in ['Alto Risco', 'N1', 'N2'] else ''
     
+    # Regra de cores de alerta
+    def estilo_alerta(valor):
+        if not isinstance(valor, str):
+            return ''
+            
+        # Nível Crítico (Vermelho) - Inclui o Possível Desistente e as Notas N1/N2
+        if valor == 'Possível desistente' or valor in ['N1', 'N2']:
+            return 'background-color: #FFCDD2; color: #B71C1C; font-weight: bold;'
+            
+        # Nível Atenção (Amarelo) - O Alto Risco passa a ser amarelo
+        elif valor == 'Alto risco':
+            return 'background-color: #FFF2CC; color: #D48806; font-weight: bold;'
+            
+        return ''
+    
+    # Aplica nas colunas de Alerta e nas colunas de Formativas
     colunas_alerta = [col for col in ['Alerta de Risco', 'Form. 1', 'Form. 2', 'Form. 3', 'Form. 4'] if col in df.columns]
+    
     if colunas_alerta:
         try:
             styler = styler.map(estilo_alerta, subset=colunas_alerta)
         except AttributeError:
             styler = styler.applymap(estilo_alerta, subset=colunas_alerta)
+            
     return styler
 
 def limpar_filtros():
@@ -99,7 +116,16 @@ def processar_regras_negocio(df):
     if 'qtd_presenca_alfabetizando' in df_clean.columns and 'qtd_aulas_dadas_turma' in df_clean.columns:
         df_clean['taxa_frequencia'] = (df_clean['qtd_presenca_alfabetizando'] / df_clean['qtd_aulas_dadas_turma'].replace(0, 1)) * 100
         df_clean['taxa_frequencia'] = df_clean['taxa_frequencia'].fillna(0).round(2)
-        df_clean['risco_frequencia'] = np.where((df_clean['taxa_frequencia'] < 75) & (df_clean['status_alfabetizando'] != 'EVADIDO'), 'Alto Risco', 'Adequado')
+        
+        # Estabelecendo regras de risco de evasão com base na frequência e status do alfabetizando
+        condicoes = [
+            (df_clean['taxa_frequencia'] < 50) & (df_clean['status_alfabetizando'] != 'EVADIDO'),
+            (df_clean['taxa_frequencia'] < 75) & (df_clean['status_alfabetizando'] != 'EVADIDO')
+        ]
+        valores = ['Possível desistente', 'Alto risco']
+        
+        # Se for < 50, aplica o primeiro. Se for < 75, aplica o segundo. O resto vira 'Adequado'.
+        df_clean['risco_frequencia'] = np.select(condicoes, valores, default='Adequado')
 
     colunas_result = [col for col in df_clean.columns if col.endswith('_result') and 'socio' not in col]
     for col in colunas_result:
@@ -333,7 +359,29 @@ if 'turma_municipio' in df_ativos.columns:
 
 # TABELA FINAL E EXPORTAÇÃO
 st.markdown("---")
-st.subheader("🔍 Detalhamento de Alfabetizandos Ativos e Ação de Monitoramento")
+st.subheader("🔍 Detalhamento de Alunos Ativos e Ação de Monitoramento")
+
+# --- NOVA LEGENDA PROFISSIONAL COM HTML/CSS ---
+st.markdown("""
+<div style='background-color: #f8f9fa; border-left: 4px solid #004A8F; padding: 12px 15px; border-radius: 4px; margin-bottom: 20px; font-size: 14.5px; color: #333;'>
+    <b>Guia de Cores e Alertas de Frequência:</b><br>
+    <div style='margin-top: 8px; display: flex; flex-wrap: wrap; gap: 15px;'>
+        <div>
+            <span style='background-color: #FFCDD2; color: #B71C1C; padding: 2px 8px; border-radius: 4px; font-weight: bold;'>Possível desistente</span> 
+            <span> Frequência abaixo de 50% (Ação Imediata)</span>
+        </div>
+        <div>
+            <span style='background-color: #FFF2CC; color: #D48806; padding: 2px 8px; border-radius: 4px; font-weight: bold;'>Alto risco</span> 
+            <span> Frequência entre 50% e 74% (Atenção)</span>
+        </div>
+        <div>
+            <span style='background-color: #E8F5E9; color: #2E7D32; padding: 2px 8px; border-radius: 4px; font-weight: bold;'>Adequado</span> 
+            <span> Frequência ≥ 75% (Meta Atingida)</span>
+        </div>
+    </div>
+</div>
+""", unsafe_allow_html=True)
+
 cols_disp = ['alfabetizando', 'turma', 'status_alfabetizando', 'taxa_frequencia', 'risco_frequencia'] + [col for col in ['diag_entr_result_nivel', 'forma_1_result_nivel', 'forma_2_result_nivel', 'forma_3_result_nivel', 'forma_4_result_nivel', 'diag_said_result_nivel'] if col in df_ativos.columns]
 df_tab = df_ativos[cols_disp].rename(columns={'alfabetizando': 'Nome do Alfabetizando', 'turma': 'Turma', 'status_alfabetizando': 'Status', 'taxa_frequencia': 'Frequência (%)', 'risco_frequencia': 'Alerta de Risco', 'diag_entr_result_nivel': 'Diag. Entrada', 'forma_1_result_nivel': 'Form. 1', 'forma_2_result_nivel': 'Form. 2', 'forma_3_result_nivel': 'Form. 3', 'forma_4_result_nivel': 'Form. 4', 'diag_said_result_nivel': 'Aval. Saída'})
 
