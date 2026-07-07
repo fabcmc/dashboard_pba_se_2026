@@ -142,7 +142,7 @@ def calcular_ipa_dinamico(df):
     df_ipa = df.copy()
     CONFIG_IPA = {
         1: {'tetos': {'ol': 32.0, 'pe': 32.0, 'al': 20.0}, 'questoes': {'ol': [1,2,3,4,5], 'pe': [1,2,3,4,5], 'al': [2,5]}},
-        2: {'tetos': {'ol': 12.0, 'pe': 14.0, 'al': 18.0}, 'questoes': {'ol': [2,3,4], 'pe': [4,5], 'al': [1,2]}},
+        2: {'tetos': {'ol': 12.0, 'pe': 14.0, 'al': 18.0}, 'questoes': {'ol': [2,3,4], 'pe': [4,5], 'al': [1,2,3]}},
         3: {'tetos': {'ol': 9.0, 'pe': 12.0, 'al': 20.0}, 'questoes': {'ol': [1,5], 'pe': [2,4,5], 'al': [1,3]}},
         4: {'tetos': {'ol': 14.0, 'pe': 14.0, 'al': 22.0}, 'questoes': {'ol': [1,4,5], 'pe': [3,4,5], 'al': [1,2,3]}}
     }
