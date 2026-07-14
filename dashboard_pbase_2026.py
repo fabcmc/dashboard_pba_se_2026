@@ -215,7 +215,7 @@ for col, label, key, default in filtros:
     selecionado = st.sidebar.selectbox(label, opcoes, key=key)
     if selecionado != default: df_filtrado = df_filtrado[df_filtrado[col] == selecionado]
 
-st.sidebar.info(f"Mostrando dados de **{df_filtrado.shape[0]}** alunos matriculados.")
+st.sidebar.info(f"Mostrando dados de **{df_filtrado.shape[0]}** alfabetizandos matriculados.")
 
 # SEPARAÇÃO MATRICULADOS VS ATIVOS
 df_ativos = df_filtrado[df_filtrado['status_alfabetizando'] != 'EVADIDO'].copy()
@@ -226,14 +226,14 @@ evadidos = total_mat - total_atv
 st.markdown("---")
 st.subheader("🎯 Visão Geral, Engajamento e Retenção")
 
-# Cálculo de indicador: Alunos ativos com frequência inferior a 50%
+# Cálculo de indicador: Alfabetizandos ativos com frequência inferior a 50%
 possiveis_desistentes = df_ativos[df_ativos['taxa_frequencia'] < 50].shape[0]
 
 # Criamos 6 colunas em vez de 5
 c1, c2, c3, c4, c5, c6 = st.columns(6)
 
 c1.metric("Total Matriculados", f"{total_mat}")
-c2.metric("Alunos Ativos", f"{total_atv}")
+c2.metric("Alfabetizandos Ativos", f"{total_atv}")
 
 c3.metric(
     "Taxa Desistência", 
@@ -328,7 +328,8 @@ if col_niveis:
     opc_aval = {k: v for k, v in dic_aval.items() if k in col_niveis}
     aval_sel = st.selectbox("Selecione a Avaliação:", options=list(opc_aval.keys()), format_func=lambda x: opc_aval[x])
     
-    ca1, ca2 = st.columns(2)
+    ca1, ca2, ca3 = st.columns(3)
+    
     with ca1:
         df_niv = df_ativos.copy()
         df_niv[aval_sel] = df_niv[aval_sel].replace({'Pendente': 'Sem dados'})
@@ -340,16 +341,60 @@ if col_niveis:
         
     with ca2:
         df_stat = df_ativos.copy()
-        df_stat['Status'] = df_ativos[aval_sel].apply(lambda x: 'Pendente' if x == 'Pendente' else 'Realizada')
+        df_stat['Status'] = df_ativos[aval_sel].apply(lambda x: 'Pendente' if x == 'Pendente' or x == 'Sem dados' else 'Realizada')
         cont_stat = df_stat['Status'].value_counts().reset_index().rename(columns={'Status': 'Status', 'count': 'Qtd'})
-        fig_s = px.pie(cont_stat, names='Status', values='Qtd', color='Status', color_discrete_map={'Realizada': COLORS['primary'], 'Pendente': COLORS['niveis']['Pendente']}, title=f"Cobertura - {opc_aval[aval_sel]}", hole=0.4)
+        fig_s = px.pie(cont_stat, names='Status', values='Qtd', color='Status', color_discrete_map={'Realizada': COLORS['primary'], 'Pendente': COLORS['niveis']['Pendente']}, title=f"Cobertura (Alfabetizandos)", hole=0.4)
         st.plotly_chart(fig_s, use_container_width=True)
+
+    # Lógica Avançada de Cobertura de Turmas (Agrupamento e Cálculo de Porcentagem)
+    df_cobertura = df_ativos.groupby(['turma_municipio', 'turma', 'coordenador', 'alfabetizador'])[aval_sel].agg(
+        Total_Alunos='count',
+        Realizados=lambda x: sum((x != 'Pendente') & (x != 'Sem dados'))
+    ).reset_index()
+    
+    # Cálculo da Taxa de Cobertura (%)
+    df_cobertura['Taxa_Cobertura'] = (df_cobertura['Realizados'] / df_cobertura['Total_Alunos']) * 100
+    df_cobertura['Status'] = df_cobertura['Realizados'].apply(lambda x: 'Realizada' if x > 0 else 'Pendente')
+
+    with ca3:
+        cont_turma_stat = df_cobertura['Status'].value_counts().reset_index().rename(columns={'Status': 'Status', 'count': 'Qtd Turmas'})
+        fig_ts = px.pie(cont_turma_stat, names='Status', values='Qtd Turmas', color='Status', color_discrete_map={'Realizada': COLORS['primary'], 'Pendente': COLORS['niveis']['Pendente']}, title=f"Cobertura (Turmas)", hole=0.4)
+        st.plotly_chart(fig_ts, use_container_width=True)
+
+    # MENUS SANFONA (EXPANDERS) COM AS LISTAS DE AÇÃO
+    st.markdown("<br>", unsafe_allow_html=True)
+    col_exp1, col_exp2 = st.columns(2)
+    
+    # Lista 1: Turmas 100% Pendentes
+    df_pendentes = df_cobertura[df_cobertura['Status'] == 'Pendente'].copy()
+    if not df_pendentes.empty:
+        with col_exp1:
+            with st.expander(f"🚨 {len(df_pendentes)} turmas com pendência TOTAL (0%)"):
+                df_pendentes = df_pendentes[['turma_municipio', 'turma', 'coordenador', 'alfabetizador', 'Total_Alunos']].sort_values('turma_municipio', ascending=True)
+                df_pendentes = df_pendentes.rename(columns={'turma_municipio': 'Município', 'turma': 'Turma', 'coordenador': 'Coordenador', 'alfabetizador': 'Alfabetizador', 'Total_Alunos': 'Alfabetizandos'})
+                st.dataframe(df_pendentes, use_container_width=True, hide_index=True)
+
+    # Lista 2: Turmas Realizadas (Com percentual de adesão)
+    df_realizadas = df_cobertura[df_cobertura['Status'] == 'Realizada'].copy()
+    if not df_realizadas.empty:
+        with col_exp2:
+            with st.expander(f"✅ {len(df_realizadas)} turmas com lançamentos iniciados"):
+                # Formatação visual: Arredonda a porcentagem e adiciona o símbolo %
+                df_realizadas['Taxa_Cobertura'] = df_realizadas['Taxa_Cobertura'].apply(lambda x: f"{x:.1f}%")
+                
+                # Ordena da menor cobertura para a maior (para destacar quem lançou pouco)
+                df_realizadas = df_realizadas.sort_values('Realizados', ascending=True)
+                
+                df_realizadas = df_realizadas[['turma_municipio', 'turma', 'coordenador','alfabetizador', 'Realizados', 'Total_Alunos', 'Taxa_Cobertura']].sort_values('turma_municipio', ascending=True)
+                df_realizadas = df_realizadas.rename(columns={'turma_municipio': 'Município', 'turma': 'Turma', 'coordenador': 'Coordenador','alfabetizador': 'Alfabetizador', 'Realizados': 'Lançamentos', 'Total_Alunos': 'Total Alfabetizandos', 'Taxa_Cobertura': 'Cobertura (%)'})
+                st.dataframe(df_realizadas, use_container_width=True, hide_index=True)
+
 
     if 'forma_' in aval_sel:
         col_ipa = f"ipa_{aval_sel.split('_result')[0]}_classificacao"
         if col_ipa in df_ativos.columns:
             st.markdown("---")
-            st.subheader(f"🏆 Índice de Progressão de Aprendizagem (IPA) - {opc_aval[aval_sel]}")
+            st.subheader(f"🏆 IPA - {opc_aval[aval_sel]}")
             df_ipa = df_ativos[df_ativos[col_ipa] != 'Sem Dados'].copy()
             cont_ipa = df_ipa[col_ipa].value_counts().reset_index().rename(columns={col_ipa: 'IPA', 'count': 'Qtd'})
             cont_ipa['IPA'] = pd.Categorical(cont_ipa['IPA'], categories=['Iniciante', 'Em desenvolvimento', 'Alfabetizado(a)', 'Alfabetização consolidada'], ordered=True)
@@ -384,7 +429,7 @@ if 'turma_municipio' in df_ativos.columns:
 
 # TABELA FINAL E EXPORTAÇÃO
 st.markdown("---")
-st.subheader("🔍 Detalhamento de Alunos Ativos e Ação de Monitoramento")
+st.subheader("🔍 Detalhamento de Alfabetizandos Ativos e Ação de Monitoramento")
 
 # --- NOVA LEGENDA PROFISSIONAL COM HTML/CSS ---
 st.markdown("""
@@ -414,7 +459,7 @@ st.dataframe(aplicar_estilo_tabela(df_tab), use_container_width=True, hide_index
 
 buffer = io.BytesIO()
 with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
-    df_tab.to_excel(writer, index=False, sheet_name='Alunos_Ativos')
-    for i, col in enumerate(df_tab.columns): writer.sheets['Alunos_Ativos'].set_column(i, i, max(df_tab[col].astype(str).map(len).max(), len(col)) + 2)
+    df_tab.to_excel(writer, index=False, sheet_name='Alfabetizandos_Ativos')
+    for i, col in enumerate(df_tab.columns): writer.sheets['Alfabetizandos_Ativos'].set_column(i, i, max(df_tab[col].astype(str).map(len).max(), len(col)) + 2)
 
-st.download_button("📥 Baixar Lista (Excel)", data=buffer.getvalue(), file_name='pba2026_alunos.xlsx', mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+st.download_button("📥 Baixar Lista (Excel)", data=buffer.getvalue(), file_name='pba2026_alfabetizandos.xlsx', mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
