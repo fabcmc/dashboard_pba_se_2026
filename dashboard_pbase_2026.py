@@ -27,6 +27,11 @@ GOVERNANCA_CONSULTOR = dict(st.secrets["governanca_consultor"])
 
 GOVERNANCA_ESPECIALISTA = dict(st.secrets["governanca_especialista"])
 
+TURMAS_ENCERRADAS = [
+    "TURMA-28022645-0001",
+    "TURMA-28013360-0001"
+]
+
 # =============================================================================
 # 2. FUNÇÕES AUXILIARES DE NEGÓCIO E UI (Clean Code)
 # =============================================================================
@@ -112,6 +117,7 @@ def processar_regras_negocio(df):
     df_clean = df.copy()
     if 'turma' in df_clean.columns:
         df_clean = df_clean[~df_clean['turma'].str.contains('TURMA-P0000247-0001', case=False, na=False)]
+        df_clean = df_clean[~df_clean['turma'].isin(TURMAS_ENCERRADAS)]
 
     if 'qtd_presenca_alfabetizando' in df_clean.columns and 'qtd_aulas_dadas_turma' in df_clean.columns:
         df_clean['taxa_frequencia'] = (df_clean['qtd_presenca_alfabetizando'] / df_clean['qtd_aulas_dadas_turma'].replace(0, 1)) * 100
@@ -226,14 +232,16 @@ evadidos = total_mat - total_atv
 st.markdown("---")
 st.subheader("🎯 Visão Geral, Engajamento e Retenção")
 
-# Cálculo de indicador: Alfabetizandos ativos com frequência inferior a 50%
 possiveis_desistentes = df_ativos[df_ativos['taxa_frequencia'] < 50].shape[0]
 
-# Criamos 6 colunas em vez de 5
-c1, c2, c3, c4, c5, c6 = st.columns(6)
+# Verifica na base original (df_bruto) quantas turmas da nossa lista realmente vieram no JSON
+qtd_encerradas = df_bruto[df_bruto['turma'].isin(TURMAS_ENCERRADAS)]['turma'].nunique()
+
+# Dividindo o topo em 7 colunas
+c1, c2, c3, c4, c5, c6, c7 = st.columns(7)
 
 c1.metric("Total Matriculados", f"{total_mat}")
-c2.metric("Alfabetizandos Ativos", f"{total_atv}")
+c2.metric("Alunos Ativos", f"{total_atv}")
 
 c3.metric(
     "Taxa Desistência", 
@@ -242,7 +250,6 @@ c3.metric(
     delta_color="inverse"
 )
 
-# Possíveis Desistentes (Com alerta visual em vermelho se houver algum)
 c4.metric(
     "Possíveis Desistentes", 
     f"{possiveis_desistentes}", 
@@ -252,6 +259,14 @@ c4.metric(
 
 c5.metric("Frequência Média", f"{df_ativos['taxa_frequencia'].mean() if total_atv > 0 else 0:.1f}%")
 c6.metric("Turmas Ativas", f"{df_filtrado['turma'].nunique()}")
+
+# Turmas Encerradas (delta_color="off" deixa a legenda cinza, indicando um dado informativo e neutro)
+c7.metric(
+    "Turmas Encerradas", 
+    f"{qtd_encerradas}", 
+    "Finalizado Antes do Tempo", 
+    delta_color="off"
+)
 
 # DEMOGRÁFICO E TERRITORIAL
 if 'turma_municipio' in df_ativos.columns and 'dt_nascimento' in df_ativos.columns:
