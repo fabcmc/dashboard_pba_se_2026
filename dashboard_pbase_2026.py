@@ -27,11 +27,6 @@ GOVERNANCA_CONSULTOR = dict(st.secrets["governanca_consultor"])
 
 GOVERNANCA_ESPECIALISTA = dict(st.secrets["governanca_especialista"])
 
-TURMAS_ENCERRADAS = [
-    "TURMA-28022645-0001",
-    "TURMA-28013360-0001"
-]
-
 # =============================================================================
 # 2. FUNÇÕES AUXILIARES DE NEGÓCIO E UI (Clean Code)
 # =============================================================================
@@ -93,6 +88,7 @@ def aplicar_estilo_tabela(df):
     return styler
 
 def limpar_filtros():
+    st.session_state['filtro_fase'] = 'Todas'
     for chave in ['filtro_municipio', 'filtro_cons', 'filtro_esp', 'filtro_coord', 'filtro_alfab']:
         st.session_state[chave] = 'Todos'
     st.session_state['filtro_turma'] = 'Todas'
@@ -100,24 +96,62 @@ def limpar_filtros():
 # =============================================================================
 # 3. EXTRAÇÃO E TRANSFORMAÇÃO DE DADOS (ETL)
 # =============================================================================
-@st.cache_data(ttl=3600, show_spinner="Conectando à base de dados segura...")
+@st.cache_data(ttl=3600, show_spinner="Conectando e cruzando as bases de dados...")
 def carregar_dados():
     try:
-        # PROTEÇÃO DE DADOS: Uso obrigatório do Secrets para o link da API
-        url_json = st.secrets["LINK_JSON_FGV"] 
-        df = pd.read_json(url_json)
-        df.columns = df.columns.str.lower().str.strip()
-        return df
+        # PROTEÇÃO DE DADOS: Consumindo os dois links de forma segura
+        url_json_alfab = st.secrets["LINK_JSON_ALFABETIZANDOS"] 
+        url_json_turmas = st.secrets["LINK_JSON_TURMAS"]
+        
+        df_alfab = pd.read_json(url_json_alfab)
+        df_alfab.columns = df_alfab.columns.str.lower().str.strip()
+        
+        df_turmas = pd.read_json(url_json_turmas)
+        df_turmas.columns = df_turmas.columns.str.lower().str.strip()
+        
+        # --- O PULO DO GATO (CLEAN DATA) ---
+        # Identifica colunas no df_turmas que já existem no df_alfab (exceto a chave ds_turma)
+        colunas_duplicadas = [col for col in df_turmas.columns if col in df_alfab.columns and col != 'ds_turma']
+        
+        # Remove essas colunas do df_turmas para evitar a criação de _x e _y no Merge
+        df_turmas_limpo = df_turmas.drop(columns=colunas_duplicadas)
+        
+        # MODELAGEM DE DADOS: Left Join Limpo
+        df_merged = pd.merge(df_alfab, df_turmas_limpo, left_on='turma', right_on='ds_turma', how='left')
+        
+        return df_merged
+        
     except Exception as e:
-        st.error(f"Erro de conexão com a fonte de dados: {e}")
+        st.error(f"Erro de conexão ou cruzamento com as fontes de dados: {e}")
         st.stop()
 
 @st.cache_data(show_spinner="Aplicando regras operacionais...")
 def processar_regras_negocio(df):
     df_clean = df.copy()
+    if 'dt_inicio' in df_clean.columns:
+        # 1. Converte texto (DD/MM/YYYY) para objeto de data oficial do Pandas. 
+        # errors='coerce' transforma erros (ex: texto vazio) em 'NaT' (Not a Time) para não quebrar o código.
+        df_clean['dt_inicio'] = pd.to_datetime(df_clean['dt_inicio'], format='%d/%m/%Y', errors='coerce')
+        
+        # 2. Extrai o mês e ano
+        mes = df_clean['dt_inicio'].dt.month
+        ano = df_clean['dt_inicio'].dt.year
+        
+        # 3. Motor de categorização
+        condicoes_fase = [
+            (mes == 4) & (ano == 2026),
+            (mes == 8) & (ano == 2026),
+            (mes == 9) & (ano == 2026)
+        ]
+        valores_fase = ['Fase I', 'Fase II', 'Aditivo']
+        
+        df_clean['fase_programa'] = np.select(condicoes_fase, valores_fase, default='Sem Previsão')
+    else:
+        df_clean['fase_programa'] = 'Sem Previsão'
+    # ---------------------------------------------------------
+
     if 'turma' in df_clean.columns:
         df_clean = df_clean[~df_clean['turma'].str.contains('TURMA-P0000247-0001', case=False, na=False)]
-        df_clean = df_clean[~df_clean['turma'].isin(TURMAS_ENCERRADAS)]
 
     if 'qtd_presenca_alfabetizando' in df_clean.columns and 'qtd_aulas_dadas_turma' in df_clean.columns:
         df_clean['taxa_frequencia'] = (df_clean['qtd_presenca_alfabetizando'] / df_clean['qtd_aulas_dadas_turma'].replace(0, 1)) * 100
@@ -190,14 +224,15 @@ df_final = calcular_ipa_dinamico(processar_regras_negocio(df_bruto))
 # =============================================================================
 # 4. RENDERIZAÇÃO DA INTERFACE (UI)
 # =============================================================================
-st.title("📊 Painel de Monitoramento - Alfabetiza Sergipe 2026.1")
+st.title("📊 Painel de Monitoramento - Alfabetiza Sergipe 2026")
 st.markdown("Acompanhamento de indicadores educacionais")
 
 # FILTROS LATERAIS
 st.sidebar.markdown("---")
 st.sidebar.header("🎛️ Filtros de Análise")
 
-# 1. Inicializamos a memória incluindo o filtro_municipio
+# 1. Inicializamos a memória incluindo o filtro_fase
+if 'filtro_fase' not in st.session_state: st.session_state['filtro_fase'] = 'Todas'
 for key in ['filtro_municipio', 'filtro_cons', 'filtro_esp', 'filtro_coord', 'filtro_alfab']:
     if key not in st.session_state: st.session_state[key] = 'Todos'
 if 'filtro_turma' not in st.session_state: st.session_state['filtro_turma'] = 'Todas'
@@ -206,8 +241,9 @@ st.sidebar.button("🔄 Limpar Todos os Filtros", on_click=limpar_filtros, use_c
 
 df_filtrado = df_final.copy()
 
-# 2. Adicionamos a tupla do Município no topo da lista (antes do consultor)
+# 2. Adicionamos a tupla da Fase no topo da lista inteligente de filtros
 filtros = [
+    ('fase_programa', 'Fase do Programa:', 'filtro_fase', 'Todas'),
     ('turma_municipio', 'Município:', 'filtro_municipio', 'Todos'),
     ('consultor', 'Consultor:', 'filtro_cons', 'Todos'),
     ('especialista', 'Especialista:', 'filtro_esp', 'Todos'),
@@ -223,22 +259,44 @@ for col, label, key, default in filtros:
 
 st.sidebar.info(f"Mostrando dados de **{df_filtrado.shape[0]}** alfabetizandos matriculados.")
 
-# SEPARAÇÃO MATRICULADOS VS ATIVOS
-df_ativos = df_filtrado[df_filtrado['status_alfabetizando'] != 'EVADIDO'].copy()
-total_mat, total_atv = df_filtrado.shape[0], df_ativos.shape[0]
+# =============================================================================
+# SEPARAÇÃO DINÂMICA: VIGENTES VS ENCERRADAS E MATRICULADOS VS ATIVOS
+# =============================================================================
+# 1. Identificamos as turmas por status (obedecendo aos filtros laterais)
+if 'situacao_turma' in df_filtrado.columns:
+    mascara_encerrada = df_filtrado['situacao_turma'] == 'Encerrada'
+    mascara_concluida = df_filtrado['situacao_turma'] == 'Concluída'
+    mascara_inativas = mascara_encerrada | mascara_concluida # Une as duas para limpar a base principal
+else:
+    # Fallback de segurança
+    mascara_encerrada = pd.Series(False, index=df_filtrado.index)
+    mascara_concluida = pd.Series(False, index=df_filtrado.index)
+    mascara_inativas = pd.Series(False, index=df_filtrado.index)
+
+# Contagem independente para os KPIs
+qtd_encerradas_dinamica = df_filtrado[mascara_encerrada]['turma'].nunique()
+qtd_concluidas_dinamica = df_filtrado[mascara_concluida]['turma'].nunique()
+
+# 2. O painel principal (frequência, notas) só deve avaliar as turmas vigentes (nem encerradas, nem concluídas)
+df_vigentes = df_filtrado[~mascara_inativas]
+
+# 3. Calculamos os alunos ativos (excluindo os evadidos) apenas das turmas vigentes
+df_ativos = df_vigentes[df_vigentes['status_alfabetizando'] != 'EVADIDO'].copy()
+
+total_mat = df_vigentes.shape[0]
+total_atv = df_ativos.shape[0]
 evadidos = total_mat - total_atv
 
-# Indicadores Gerais
+# =============================================================================
+# INDICADORES GERAIS (KPIS)
+# =============================================================================
 st.markdown("---")
 st.subheader("🎯 Visão Geral, Engajamento e Retenção")
 
 possiveis_desistentes = df_ativos[df_ativos['taxa_frequencia'] < 50].shape[0]
 
-# Verifica na base original (df_bruto) quantas turmas da nossa lista realmente vieram no JSON
-qtd_encerradas = df_bruto[df_bruto['turma'].isin(TURMAS_ENCERRADAS)]['turma'].nunique()
-
-# Dividindo o topo em 7 colunas
-c1, c2, c3, c4, c5, c6, c7 = st.columns(7)
+# Dividindo o topo em 8 colunas agora
+c1, c2, c3, c4, c5, c6, c7, c8 = st.columns(8)
 
 c1.metric("Total Matriculados", f"{total_mat}")
 c2.metric("Alunos Ativos", f"{total_atv}")
@@ -258,14 +316,23 @@ c4.metric(
 )
 
 c5.metric("Frequência Média", f"{df_ativos['taxa_frequencia'].mean() if total_atv > 0 else 0:.1f}%")
-c6.metric("Turmas Ativas", f"{df_filtrado['turma'].nunique()}")
 
-# Turmas Encerradas (delta_color="off" deixa a legenda cinza, indicando um dado informativo e neutro)
+c6.metric("Turmas Ativas", f"{df_vigentes['turma'].nunique()}")
+
+# KPI de Turmas Encerradas (Neutro/Atenção)
 c7.metric(
     "Turmas Encerradas", 
-    f"{qtd_encerradas}", 
-    "Finalizado Antes do Tempo", 
+    f"{qtd_encerradas_dinamica}", 
+    "Interrompidas" if qtd_encerradas_dinamica > 0 else "", 
     delta_color="off"
+)
+
+# NOVO KPI: Turmas Concluídas (Sucesso)
+c8.metric(
+    "Turmas Concluídas", 
+    f"{qtd_concluidas_dinamica}", 
+    "Ciclo Finalizado" if qtd_concluidas_dinamica > 0 else "", 
+    delta_color="normal" # "normal" deixará a seta/legenda verde, indicando positividade!
 )
 
 # DEMOGRÁFICO E TERRITORIAL
@@ -275,16 +342,25 @@ if 'turma_municipio' in df_ativos.columns and 'dt_nascimento' in df_ativos.colum
     cd1, cd2 = st.columns([1, 2])
     
     with cd1:
-        df_idade = df_ativos.copy()
-        df_idade['dt_nascimento'] = pd.to_datetime(df_idade['dt_nascimento'], errors='coerce')
-        df_idade['idade'] = (pd.Timestamp.now() - df_idade['dt_nascimento']).dt.days // 365
-        rotulos_idade = ['15 a 24 anos', '25 a 34 anos', '35 a 44 anos', '45 a 54 anos', '55 a 64 anos', '65 a 74 anos', '75 anos ou mais']
-        df_idade['faixa_etaria'] = pd.cut(df_idade['idade'], bins=[14, 24, 34, 44, 54, 64, 74, 150], labels=rotulos_idade)
-        cont_idade = df_idade['faixa_etaria'].value_counts().reset_index().rename(columns={'index':'Faixa Etária', 'faixa_etaria': 'Faixa Etária', 'count': 'Quantidade'})
-        
-        fig_idade = px.pie(cont_idade, names='Faixa Etária', values='Quantidade', hole=0.4, title="Faixa Etária", color_discrete_sequence=px.colors.sequential.Teal)
-        fig_idade.update_layout(legend=dict(orientation="h", yanchor="top", y=-0.1, xanchor="center", x=0.5))
-        st.plotly_chart(fig_idade, use_container_width=True)
+            df_idade = df_ativos.copy()
+            
+            # Correção 1: Adição do format='%d/%m/%Y' para remover o UserWarning
+            df_idade['dt_nascimento'] = pd.to_datetime(df_idade['dt_nascimento'], format='%d/%m/%Y', errors='coerce')
+            
+            # Correção 2: Cálculo seguro de idade (Ano atual - Ano de nascimento) 
+            ano_atual = pd.Timestamp.now().year
+            df_idade['idade'] = ano_atual - df_idade['dt_nascimento'].dt.year
+            
+            rotulos_idade = ['15 a 24 anos', '25 a 34 anos', '35 a 44 anos', '45 a 54 anos', '55 a 64 anos', '65 a 74 anos', '75 anos ou mais']
+            
+            # Se alguma idade "maluca" resultar em 1000 anos, o pd.cut simplesmente a ignorará, 
+            # protegendo o nosso gráfico de rosca de dados irreais.
+            df_idade['faixa_etaria'] = pd.cut(df_idade['idade'], bins=[14, 24, 34, 44, 54, 64, 74, 150], labels=rotulos_idade)
+            cont_idade = df_idade['faixa_etaria'].value_counts().reset_index().rename(columns={'index':'Faixa Etária', 'faixa_etaria': 'Faixa Etária', 'count': 'Quantidade'})
+            
+            fig_idade = px.pie(cont_idade, names='Faixa Etária', values='Quantidade', hole=0.4, title="Faixa Etária", color_discrete_sequence=px.colors.sequential.Teal)
+            fig_idade.update_layout(legend=dict(orientation="h", yanchor="top", y=-0.1, xanchor="center", x=0.5))
+            st.plotly_chart(fig_idade, use_container_width=True)
 
     with cd2:
         df_muni = df_ativos.groupby('turma_municipio').agg(total_alunos=('alfabetizando', 'count'), total_turmas=('turma', 'nunique')).reset_index().sort_values('total_alunos')
@@ -292,47 +368,145 @@ if 'turma_municipio' in df_ativos.columns and 'dt_nascimento' in df_ativos.colum
         fig_muni.update_layout(height=max(400, len(df_muni)*35), xaxis_title=None, yaxis_title=None)
         st.plotly_chart(fig_muni, use_container_width=True)
 
-# SOCIOEMOCIONAL
-if 'socio_entr_q1' in df_ativos.columns and 'socio_entr_q9' in df_ativos.columns:
-    st.markdown("---")
-    st.subheader("🧠 Contexto Socioemocional de Entrada")
-    
-    map_txt = {
-        'Demonstra motivação constante e desejo de continuar estudando': 'Alta Motivação', 'Demonstra interesse, mas com oscilações': 'Interesse oscilante', 'Demonstra desmotivação ou desejo de interromper': 'Desmotivação', 
-        'São frequentes e pontuais': 'Frequentes e pontuais', 'Frequência regular sem nenhuma falta': 'Freq. sem faltas', 'Frequência regular com algumas faltas': 'Freq. com faltas', 
-        'Realiza com alguma ajuda': 'Realiza com ajuda', 'Realiza com autonomia na maioria das situações': 'Realiza com autonomia', 'Depende de ajuda constante': 'Depende de ajuda', 
-        'Tenta com apoio e incentivo': 'Tenta com apoio', 'Tenta com iniciativa própria': 'Tenta com iniciativa', 'Demonstra insegurança e evita tentar': 'Insegurança', 
-        'Persiste e aceita o erro como parte da aprendizagem': 'Aceita o erro', 'Persiste, mas demonstra frustração': 'Frustração', 'Desiste facilmente': 'Desiste facilmente', 
-        'Participa ativamente e coopera com os colegas': 'Participa ativamente', 'Participa quando estimulado(a)': 'Participa se estimulado', 'Evita interações': 'Evita interações', 
-        'Reconhece claramente e relata usos práticos': 'Reconhece claramente', 'Reconhece em algumas situações': 'Reconhece às vezes', 'Não reconhece': 'Não reconhece'
+# =============================================================================
+# SOCIOEMOCIONAL (DINÂMICO)
+# =============================================================================
+st.markdown("---")
+# 1. Alteração do título conforme solicitado
+st.subheader("🧠 Contexto Socioemocional")
+
+# 2. Criando o Dropdown para selecionar o momento da avaliação
+tipo_socio = st.selectbox(
+    "Selecione a Avaliação Socioemocional:", 
+    ["Socioemocional de Entrada", "Socioemocional de Saída"]
+)
+
+# Definindo qual será o prefixo a ser procurado nas colunas do Pandas
+prefixo_socio = 'socio_entr' if tipo_socio == "Socioemocional de Entrada" else 'socio_said'
+
+# Verifica se pelo menos a Q1 da avaliação selecionada está presente na base
+if f'{prefixo_socio}_q1' not in df_ativos.columns:
+    st.info(f"Os dados da {tipo_socio} não estão disponíveis para este filtro ou ainda não foram carregados.")
+else:
+    # 3. Dicionário de Mapeamento Unificado (Baseado no .txt fornecido)
+    # Corrigi pequenos erros de digitação (ex: 'Demosntra') para garantir qualidade visual
+    mapeamento_textos = {
+        # Variáveis da Socioemocional de Entrada
+        'Demonstra motivação constante e desejo de continuar estudando': 'Demonstra motivação',
+        'Demonstra interesse, mas com oscilações': 'Demonstra interesse',
+        'Demonstra desmotivação ou desejo de interromper': 'Demonstra desmotivação',
+        'São frequentes e pontuais': 'Frequentes e pontuais',
+        'Frequência regular sem nenhuma falta': 'Frequência sem faltas',
+        'Frequência regular com algumas faltas': 'Frequência com faltas',
+        'Realiza com alguma ajuda': 'Realiza com ajuda',
+        'Realiza com autonomia na maioria das situações': 'Realiza com autonomia',
+        'Depende de ajuda constante': 'Depende de ajuda',
+        'Tenta com apoio e incentivo': 'Tenta com apoio',
+        'Tenta com iniciativa própria': 'Tenta com iniciativa',
+        'Demonstra insegurança e evita tentar': 'Demonstra insegurança',
+        'Persiste e aceita o erro como parte da aprendizagem': 'Persiste e aceita o erro',
+        'Persiste, mas demonstra frustração': 'Persiste com frustração',
+        'Desiste facilmente': 'Desiste facilmente',
+        'Participa ativamente e coopera com os colegas': 'Participa e coopera',
+        'Participa quando estimulado(a)': 'Participa quando estimulado(a)',
+        'Evita interações': 'Evita interações',
+        'Reconhece claramente e relata usos práticos': 'Reconhece claramente',
+        'Reconhece em algumas situações': 'Reconhece algumas vezes',
+        'Não reconhece': 'Não reconhece',
+        
+        # Variáveis da Socioemocional de Saída
+        'Boa motivação e interesse constante': 'Boa motivação e interesse',
+        'Baixa motivação e risco de evasão': 'Baixa motivação',
+        'Frequência regular e boa permanência': 'Frequência e permanente',
+        'Frequência irregular e evasões significativas': 'Frequência irregular',
+        'Realizou com autonomia em várias situações': 'Realizou com autonomia',
+        'Realizou com alguma ajuda': 'Realizou com ajuda',
+        'Dependeu de ajuda constante': 'Dependeu de ajuda',
+        'Demonstrou iniciativa e envolvimento': 'Demonstrou iniciativa',
+        'Tentou com incentivo': 'Tentou com incentivo',
+        'Demonstrou insegurança e resistência': 'Insegurança e resistência',
+        'Persistiu e compreendeu o erro como parte da aprendizagem': 'Persistiu e superou',
+        'Persistiu com apoio': 'Persistiu com apoio',
+        'Desistiu com facilidade': 'Desistiu facilmente',
+        'Participou e cooperou ativamente com os colegas': 'Participou ativamente',
+        'Interagiu quando estimulado(a)': 'Interagiu sob estimulação',
+        'Apresentou pouca interação': 'Pouca interação',
+        'Reconhecimento claro e frequente com usos práticos': 'Reconhecimento frequente',
+        'Reconhecimento parcial': 'Reconhecimento parcial',
+        'Pouco reconhecimento': 'Pouco reconhecimento',
+        'Predominância nos níveis mais avançados': 'Níveis avançados',
+        'Distribuição equilibrada entre níveis': 'Distribuição entre níveis',
+        'Predominância nos níveis iniciais': 'Níveis iniciais'
     }
     
-    cores_socio = {k: COLORS['secondary'] for k in ['Alta Motivação', 'Frequentes e pontuais', 'Realiza com autonomia', 'Tenta com iniciativa', 'Aceita o erro', 'Participa ativamente', 'Reconhece claramente']}
-    cores_socio.update({k: COLORS['risco_medio'] for k in ['Interesse oscilante', 'Freq. sem faltas', 'Realiza com ajuda', 'Tenta com apoio', 'Frustração', 'Participa se estimulado', 'Reconhece às vezes']})
-    cores_socio.update({k: COLORS['risco_alto'] for k in ['Desmotivação', 'Freq. com faltas', 'Depende de ajuda', 'Insegurança', 'Desiste facilmente', 'Evita interações', 'Não reconhece']})
+    # Atribuição Semântica de Cores (Positivo = Verde, Neutro = Amarelo, Crítico = Vermelho)
+    cores_socio = {k: COLORS['secondary'] for k in [
+        'Demonstra motivação', 'Frequentes e pontuais', 'Frequência sem faltas', 'Realiza com autonomia',
+        'Tenta com iniciativa', 'Persiste e aceita o erro', 'Participa e coopera', 'Reconhece claramente',
+        'Boa motivação e interesse', 'Frequência e permanente', 'Realizou com autonomia', 'Demonstrou iniciativa',
+        'Persistiu e superou', 'Participou ativamente', 'Reconhecimento frequente', 'Níveis avançados'
+    ]}
+    cores_socio.update({k: COLORS['risco_medio'] for k in [
+        'Demonstra interesse', 'Frequência com faltas', 'Realiza com ajuda', 'Tenta com apoio',
+        'Persiste com frustração', 'Participa quando estimulado(a)', 'Reconhece algumas vezes',
+        'Realizou com ajuda', 'Tentou com incentivo', 'Persistiu com apoio', 'Interagiu sob estimulação',
+        'Reconhecimento parcial', 'Distribuição entre níveis'
+    ]})
+    cores_socio.update({k: COLORS['risco_alto'] for k in [
+        'Demonstra desmotivação', 'Depende de ajuda', 'Demonstra insegurança', 'Desiste facilmente',
+        'Evita interações', 'Não reconhece', 'Baixa motivação', 'Frequência irregular', 'Dependeu de ajuda',
+        'Insegurança e resistência', 'Desistiu facilmente', 'Pouca interação', 'Pouco reconhecimento',
+        'Níveis iniciais'
+    ]})
 
-    titulos = ["1. Motivação", "2. Assiduidade", "3. Autonomia", "4. Iniciativa", "5. Persistência", "6. Participação", "7. Usos Práticos"]
-    cols_q = [f'socio_entr_q{i}' for i in range(1, 8)]
-
-    st.markdown("<br>", unsafe_allow_html=True)
-    c_l1 = st.columns(4)
-    for i in range(4):
-        if cols_q[i] in df_ativos.columns:
-            with c_l1[i]: st.plotly_chart(criar_grafico_rosca(df_ativos, cols_q[i], titulos[i], map_txt, cores_socio), use_container_width=True)
-
-    c_l2 = st.columns([0.5, 1, 1, 1, 0.5])
-    for i in range(4, 7):
-        if cols_q[i] in df_ativos.columns:
-            with c_l2[i-3]: st.plotly_chart(criar_grafico_rosca(df_ativos, cols_q[i], titulos[i], map_txt, cores_socio), use_container_width=True)
-
-    df_dif = df_ativos[['socio_entr_q9']].copy()
-    df_dif['lista'] = df_dif['socio_entr_q9'].apply(extrair_dificuldades)
-    cont_dif = df_dif.explode('lista').dropna(subset=['lista'])['lista'].value_counts().reset_index().rename(columns={'lista':'Dificuldade', 'count':'Qtd'})
-    cont_dif = cont_dif[cont_dif['Dificuldade'] != '']
+    # Titulos generalistas que funcionam perfeitamente para Entrada e Saída
+    titulos = ["1. Motivação", "2. Assiduidade", "3. Autonomia", "4. Iniciativa", "5. Persistência", "6. Participação", "7. Usos Práticos", "8. Aquisição (Letramento)"]
     
-    fig_dif = px.bar(cont_dif, y='Dificuldade', x='Qtd', orientation='h', title="8. Dificuldades (Q9)", text_auto=True, height=500, color_discrete_sequence=[COLORS['primary']])
-    fig_dif.update_layout(yaxis={'categoryorder':'total ascending'}, xaxis_title=None, yaxis_title=None)
-    st.plotly_chart(fig_dif, use_container_width=True)
+    # Descobre quantas perguntas de múltipla escolha (rosca) nós temos para o momento selecionado (Q1 até Q8)
+    cols_validas = [f'{prefixo_socio}_q{i}' for i in range(1, 9) if f'{prefixo_socio}_q{i}' in df_ativos.columns]
+
+    # Renderização da Linha 1 (Sempre 4 gráficos)
+    if len(cols_validas) > 0:
+        st.markdown("<br>", unsafe_allow_html=True)
+        c_l1 = st.columns(4)
+        for i in range(min(4, len(cols_validas))):
+            with c_l1[i]: 
+                st.plotly_chart(criar_grafico_rosca(df_ativos, cols_validas[i], titulos[i], mapeamento_textos, cores_socio), use_container_width=True)
+
+    # Renderização da Linha 2 (Dinâmica: 3 gráficos centralizados OU 4 gráficos distribuídos)
+    if len(cols_validas) > 4:
+        st.markdown("<br>", unsafe_allow_html=True)
+        resto = len(cols_validas) - 4
+        
+        if resto == 3:
+            # Layout especial [0.5, 1, 1, 1, 0.5] para centralizar os 3 gráficos restantes (Entrada)
+            c_l2 = st.columns([0.5, 1, 1, 1, 0.5])
+            for i in range(4, 7):
+                with c_l2[i-3]: 
+                    st.plotly_chart(criar_grafico_rosca(df_ativos, cols_validas[i], titulos[i], mapeamento_textos, cores_socio), use_container_width=True)
+        else:
+            # Layout padrão para os 4 gráficos restantes (Saída)
+            c_l2 = st.columns(4)
+            for i in range(4, min(8, len(cols_validas))):
+                with c_l2[i-4]:
+                    st.plotly_chart(criar_grafico_rosca(df_ativos, cols_validas[i], titulos[i], mapeamento_textos, cores_socio), use_container_width=True)
+
+    # Gráfico Final: Dificuldades (Sempre é a Questão 9, independentemente se é entrada ou saída)
+    col_q9 = f'{prefixo_socio}_q9'
+    if col_q9 in df_ativos.columns:
+        df_dif = df_ativos[[col_q9]].copy()
+        df_dif['lista'] = df_dif[col_q9].apply(extrair_dificuldades)
+        cont_dif = df_dif.explode('lista').dropna(subset=['lista'])['lista'].value_counts().reset_index().rename(columns={'lista':'Dificuldade', 'count':'Qtd'})
+        cont_dif = cont_dif[cont_dif['Dificuldade'] != '']
+        
+        if not cont_dif.empty:
+            fig_dif = px.bar(
+                cont_dif, y='Dificuldade', x='Qtd', orientation='h', 
+                title="Mapeamento de Desafios Relatados (Questão 9)", 
+                text_auto=True, height=500, color_discrete_sequence=[COLORS['primary']]
+            )
+            fig_dif.update_layout(yaxis={'categoryorder':'total ascending'}, xaxis_title=None, yaxis_title=None)
+            st.plotly_chart(fig_dif, use_container_width=True)
 
 # AVALIAÇÕES E PROFICIÊNCIA
 col_niveis = [col for col in df_ativos.columns if col.endswith('_result_nivel')]
