@@ -279,12 +279,15 @@ qtd_concluidas_dinamica = df_filtrado[mascara_concluida]['turma'].nunique()
 
 # 2. O painel principal (frequência, notas) só deve avaliar as turmas vigentes (nem encerradas, nem concluídas)
 df_vigentes = df_filtrado[~mascara_inativas]
+df_reais = df_filtrado[~mascara_encerrada]
 
 # 3. Calculamos os alunos ativos (excluindo os evadidos) apenas das turmas vigentes
-df_ativos = df_vigentes[df_vigentes['status_alfabetizando'] != 'EVADIDO'].copy()
+df_ativos = df_reais[df_reais['status_alfabetizando'] != 'EVADIDO'].copy()
+df_em_funcionamento = df_vigentes[df_vigentes['status_alfabetizando'] != 'EVADIDO'].copy()
 
-total_mat = df_vigentes.shape[0]
+total_mat = df_filtrado.shape[0]
 total_atv = df_ativos.shape[0]
+total_curso = df_vigentes.shape[0]
 evadidos = total_mat - total_atv
 
 # =============================================================================
@@ -296,31 +299,32 @@ st.subheader("🎯 Visão Geral, Engajamento e Retenção")
 possiveis_desistentes = df_ativos[df_ativos['taxa_frequencia'] < 50].shape[0]
 
 # Dividindo o topo em 8 colunas agora
-c1, c2, c3, c4, c5, c6, c7, c8 = st.columns(8)
+c1, c2, c3, c4, c5, c6, c7, c8, c9 = st.columns(9)
 
-c1.metric("Total Matriculados", f"{total_mat}")
-c2.metric("Alunos Ativos", f"{total_atv}")
+c1.metric("Total Inscritos", f"{total_mat}")
+c2.metric("Alunos Matriculados", f"{total_atv}")
+c3.metric("Alunos em Curso", f"{total_curso}")
 
-c3.metric(
+c4.metric(
     "Taxa Desistência", 
     f"{(evadidos/total_mat*100) if total_mat > 0 else 0:.1f}%", 
     f"{evadidos} evadidos" if evadidos > 0 else "Nenhuma", 
     delta_color="inverse"
 )
 
-c4.metric(
+c5.metric(
     "Possíveis Desistentes", 
     f"{possiveis_desistentes}", 
     "Ação Imediata" if possiveis_desistentes > 0 else "Estável", 
     delta_color="inverse"
 )
 
-c5.metric("Frequência Média", f"{df_ativos['taxa_frequencia'].mean() if total_atv > 0 else 0:.1f}%")
+c6.metric("Frequência Média", f"{df_ativos['taxa_frequencia'].mean() if total_atv > 0 else 0:.1f}%")
 
-c6.metric("Turmas Ativas", f"{df_vigentes['turma'].nunique()}")
+c7.metric("Turmas Ativas", f"{df_vigentes['turma'].nunique()}")
 
 # KPI de Turmas Encerradas (Neutro/Atenção)
-c7.metric(
+c8.metric(
     "Turmas Encerradas", 
     f"{qtd_encerradas_dinamica}", 
     "Interrompidas" if qtd_encerradas_dinamica > 0 else "", 
@@ -328,7 +332,7 @@ c7.metric(
 )
 
 # NOVO KPI: Turmas Concluídas (Sucesso)
-c8.metric(
+c9.metric(
     "Turmas Concluídas", 
     f"{qtd_concluidas_dinamica}", 
     "Ciclo Finalizado" if qtd_concluidas_dinamica > 0 else "", 
