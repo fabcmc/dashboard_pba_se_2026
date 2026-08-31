@@ -96,33 +96,37 @@ def limpar_filtros():
 # =============================================================================
 # 3. EXTRAÇÃO E TRANSFORMAÇÃO DE DADOS (ETL)
 # =============================================================================
-@st.cache_data(ttl=3600, show_spinner="Conectando e cruzando as bases de dados...")
+@st.cache_data(ttl=3600, show_spinner="Diagnosticando conexão com as bases de dados...")
 def carregar_dados():
+    # PROTEÇÃO DE DADOS: Consumindo os dois links de forma segura
+    url_json_alfab = st.secrets["LINK_JSON_ALFABETIZANDOS"] 
+    url_json_turmas = st.secrets["LINK_JSON_TURMAS"]
+    
+    # --- TESTE 1: BASE DE ALFABETIZANDOS ---
     try:
-        # PROTEÇÃO DE DADOS: Consumindo os dois links de forma segura
-        url_json_alfab = st.secrets["LINK_JSON_ALFABETIZANDOS"] 
-        url_json_turmas = st.secrets["LINK_JSON_TURMAS"]
-        
         df_alfab = pd.read_json(url_json_alfab)
         df_alfab.columns = df_alfab.columns.str.lower().str.strip()
+    except Exception as e:
+        st.error(f"❌ ERRO NA BASE DE ALFABETIZANDOS: O link fornecido não retornou um JSON válido. Detalhe técnico: {e}")
+        st.stop()
         
+    # --- TESTE 2: BASE DE TURMAS ---
+    try:
         df_turmas = pd.read_json(url_json_turmas)
         df_turmas.columns = df_turmas.columns.str.lower().str.strip()
+    except Exception as e:
+        st.error(f"❌ ERRO NA BASE DE TURMAS: O link fornecido não retornou um JSON válido. Detalhe técnico: {e}")
+        st.stop()
         
-        # --- O PULO DO GATO (CLEAN DATA) ---
-        # Identifica colunas no df_turmas que já existem no df_alfab (exceto a chave ds_turma)
+    # --- TESTE 3: CRUZAMENTO DOS DADOS (MERGE) ---
+    try:
         colunas_duplicadas = [col for col in df_turmas.columns if col in df_alfab.columns and col != 'ds_turma']
-        
-        # Remove essas colunas do df_turmas para evitar a criação de _x e _y no Merge
         df_turmas_limpo = df_turmas.drop(columns=colunas_duplicadas)
         
-        # MODELAGEM DE DADOS: Left Join Limpo
         df_merged = pd.merge(df_alfab, df_turmas_limpo, left_on='turma', right_on='ds_turma', how='left')
-        
         return df_merged
-        
     except Exception as e:
-        st.error(f"Erro de conexão ou cruzamento com as fontes de dados: {e}")
+        st.error(f"❌ ERRO NO CRUZAMENTO DAS BASES: Detalhe técnico: {e}")
         st.stop()
 
 @st.cache_data(show_spinner="Aplicando regras operacionais...")
