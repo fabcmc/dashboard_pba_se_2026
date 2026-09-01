@@ -96,7 +96,7 @@ def limpar_filtros():
 # =============================================================================
 # 3. EXTRAÇÃO E TRANSFORMAÇÃO DE DADOS (ETL)
 # =============================================================================
-@st.cache_data(ttl=3600, show_spinner="Diagnosticando conexão com as bases de dados...")
+@st.cache_data(ttl=1800, show_spinner="Diagnosticando conexão com as bases de dados...")
 def carregar_dados():
     # PROTEÇÃO DE DADOS: Consumindo os dois links de forma segura
     url_json_alfab = st.secrets["LINK_JSON_ALFABETIZANDOS"] 
