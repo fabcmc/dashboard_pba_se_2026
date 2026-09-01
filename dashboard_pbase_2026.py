@@ -11,6 +11,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 import json
 import io
+from datetime import datetime, timezone, timedelta
 
 # =============================================================================
 # 1. CONFIGURAÇÕES GERAIS E CONSTANTES (O topo do arquivo)
@@ -96,7 +97,7 @@ def limpar_filtros():
 # =============================================================================
 # 3. EXTRAÇÃO E TRANSFORMAÇÃO DE DADOS (ETL)
 # =============================================================================
-@st.cache_data(ttl=1800, show_spinner="Diagnosticando conexão com as bases de dados...")
+@st.cache_data(ttl=900, show_spinner="Diagnosticando conexão com as bases de dados...")
 def carregar_dados():
     # PROTEÇÃO DE DADOS: Consumindo os dois links de forma segura
     url_json_alfab = st.secrets["LINK_JSON_ALFABETIZANDOS"] 
@@ -124,11 +125,16 @@ def carregar_dados():
         df_turmas_limpo = df_turmas.drop(columns=colunas_duplicadas)
         
         df_merged = pd.merge(df_alfab, df_turmas_limpo, left_on='turma', right_on='ds_turma', how='left')
-        return df_merged
+        
+        # --- NOVO: Carimbo de tempo atrelado ao ciclo de cache ---
+        fuso_br = timezone(timedelta(hours=-3))
+        carimbo_tempo = datetime.now(fuso_br).strftime("%d/%m/%Y às %H:%M:%S")
+        
+        return df_merged, carimbo_tempo # Agora a função devolve duas coisas
     except Exception as e:
         st.error(f"❌ ERRO NO CRUZAMENTO DAS BASES: Detalhe técnico: {e}")
         st.stop()
-
+        
 @st.cache_data(show_spinner="Aplicando regras operacionais...")
 def processar_regras_negocio(df):
     df_clean = df.copy()
@@ -220,16 +226,20 @@ def calcular_ipa_dinamico(df):
 
     return df_ipa.drop(columns=['ipa_ol_base', 'ipa_pe_base', 'ipa_al_base'], errors='ignore')
 
+# =============================================================================
 # Execução do Motor de Dados
-df_bruto = carregar_dados()
+# =============================================================================
+# Desempacota o DataFrame e o horário congelado pelo cache
+df_bruto, horario_extracao = carregar_dados() 
 df_final = calcular_ipa_dinamico(processar_regras_negocio(df_bruto))
-
 
 # =============================================================================
 # 4. RENDERIZAÇÃO DA INTERFACE (UI)
 # =============================================================================
 st.title("📊 Painel de Monitoramento - Alfabetiza Sergipe 2026")
-st.markdown("Acompanhamento de indicadores educacionais")
+
+# O horário exibido agora é exatamente o momento em que a FGV enviou os dados
+st.markdown(f"**Acompanhamento de indicadores educacionais** | 🔄 *Última sincronização com a base: {horario_extracao}*")
 
 # FILTROS LATERAIS
 st.sidebar.markdown("---")
@@ -335,7 +345,7 @@ c8.metric(
     delta_color="off"
 )
 
-# NOVO KPI: Turmas Concluídas (Sucesso)
+# KPI: Turmas Concluídas (Sucesso)
 c9.metric(
     "Turmas Concluídas", 
     f"{qtd_concluidas_dinamica}", 
