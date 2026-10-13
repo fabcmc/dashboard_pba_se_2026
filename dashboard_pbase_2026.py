@@ -459,19 +459,19 @@ else:
     
     # Atribuição Semântica de Cores (Positivo = Verde, Neutro = Amarelo, Crítico = Vermelho)
     cores_socio = {k: COLORS['secondary'] for k in [
-        'Demonstra motivação', 'Frequentes e pontuais', 'Frequência sem faltas', 'Realiza com autonomia',
+        'Demonstra motivação', 'Frequentes e pontuais', 'Realiza com autonomia',
         'Tenta com iniciativa', 'Persiste e aceita o erro', 'Participa e coopera', 'Reconhece claramente',
         'Boa motivação e interesse', 'Frequência e permanente', 'Realizou com autonomia', 'Demonstrou iniciativa',
         'Persistiu e superou', 'Participou ativamente', 'Reconhecimento frequente', 'Níveis avançados'
     ]}
     cores_socio.update({k: COLORS['risco_medio'] for k in [
-        'Demonstra interesse', 'Frequência com faltas', 'Realiza com ajuda', 'Tenta com apoio',
+        'Demonstra interesse', 'Frequência sem faltas', 'Realiza com ajuda', 'Tenta com apoio',
         'Persiste com frustração', 'Participa quando estimulado(a)', 'Reconhece algumas vezes',
         'Realizou com ajuda', 'Tentou com incentivo', 'Persistiu com apoio', 'Interagiu sob estimulação',
         'Reconhecimento parcial', 'Distribuição entre níveis'
     ]})
     cores_socio.update({k: COLORS['risco_alto'] for k in [
-        'Demonstra desmotivação', 'Depende de ajuda', 'Demonstra insegurança', 'Desiste facilmente',
+        'Demonstra desmotivação', 'Frequência com faltas', 'Depende de ajuda', 'Demonstra insegurança', 'Desiste facilmente',
         'Evita interações', 'Não reconhece', 'Baixa motivação', 'Frequência irregular', 'Dependeu de ajuda',
         'Insegurança e resistência', 'Desistiu facilmente', 'Pouca interação', 'Pouco reconhecimento',
         'Níveis iniciais'
