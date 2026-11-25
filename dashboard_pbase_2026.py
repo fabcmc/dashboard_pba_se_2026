@@ -348,6 +348,8 @@ for col, label, key, default in FILTROS_CONFIG:
         opcoes_set.update(df_filtrado[col].dropna().unique())
     if col in df_turmas_filtrado.columns:
         opcoes_set.update(df_turmas_filtrado[col].dropna().unique())
+    if col == 'fase_programa':
+        opcoes_set.discard('Sem Previsão')
 
     opcoes = [default] + sorted(opcoes_set)
     selecionado = st.sidebar.selectbox(label, opcoes, key=key)
