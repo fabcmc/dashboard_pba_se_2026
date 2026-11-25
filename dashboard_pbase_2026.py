@@ -3,18 +3,16 @@ PBA SE 2026 - Dashboard de Monitoramento Pedagógico
 Objetivo: Acompanhar o engajamento (frequência) e a evolução da aprendizagem.
 Framework: Streamlit + Pandas + Plotly
 """
-
 import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.express as px
-import plotly.graph_objects as go
 import json
 import io
 from datetime import datetime, timezone, timedelta
 
 # =============================================================================
-# 1. CONFIGURAÇÕES GERAIS E CONSTANTES (O topo do arquivo)
+# 1. CONFIGURAÇÕES GERAIS E CONSTANTES
 # =============================================================================
 st.set_page_config(page_title="PBA SE 2026 | Monitoramento", page_icon="📊", layout="wide")
 
@@ -28,9 +26,96 @@ GOVERNANCA_CONSULTOR = dict(st.secrets["governanca_consultor"])
 
 GOVERNANCA_ESPECIALISTA = dict(st.secrets["governanca_especialista"])
 
+FILTROS_CONFIG = [
+    ('fase_programa', 'Fase do Programa:', 'filtro_fase', 'Todas'),
+    ('turma_municipio', 'Município:', 'filtro_municipio', 'Todos'),
+    ('consultor', 'Consultor:', 'filtro_cons', 'Todos'),
+    ('especialista', 'Especialista:', 'filtro_esp', 'Todos'),
+    ('coordenador', 'Coordenador:', 'filtro_coord', 'Todos'),
+    ('alfabetizador', 'Alfabetizador:', 'filtro_alfab', 'Todos'),
+    ('turma', 'Turma:', 'filtro_turma', 'Todas'),
+]
+
+# Dicionário de Mapeamento Unificado: Corrige pequenos erros de digitação (ex: 'Demosntra') para garantir qualidade visual
+mapeamento_textos = {
+    # Variáveis da Socioemocional de Entrada
+    'Demonstra motivação constante e desejo de continuar estudando': 'Demonstra motivação',
+    'Demonstra interesse, mas com oscilações': 'Demonstra interesse',
+    'Demonstra desmotivação ou desejo de interromper': 'Demonstra desmotivação',
+    'São frequentes e pontuais': 'Frequentes e pontuais',
+    'Frequência regular sem nenhuma falta': 'Frequência sem faltas',
+    'Frequência regular com algumas faltas': 'Frequência com faltas',
+    'Realiza com alguma ajuda': 'Realiza com ajuda',
+    'Realiza com autonomia na maioria das situações': 'Realiza com autonomia',
+    'Depende de ajuda constante': 'Depende de ajuda',
+    'Tenta com apoio e incentivo': 'Tenta com apoio',
+    'Tenta com iniciativa própria': 'Tenta com iniciativa',
+    'Demonstra insegurança e evita tentar': 'Demonstra insegurança',
+    'Persiste e aceita o erro como parte da aprendizagem': 'Persiste e aceita o erro',
+    'Persiste, mas demonstra frustração': 'Persiste com frustração',
+    'Desiste facilmente': 'Desiste facilmente',
+    'Participa ativamente e coopera com os colegas': 'Participa e coopera',
+    'Participa quando estimulado(a)': 'Participa quando estimulado(a)',
+    'Evita interações': 'Evita interações',
+    'Reconhece claramente e relata usos práticos': 'Reconhece claramente',
+    'Reconhece em algumas situações': 'Reconhece algumas vezes',
+    'Não reconhece': 'Não reconhece',
+    
+    # Variáveis da Socioemocional de Saída
+    'Boa motivação e interesse constante': 'Boa motivação e interesse',
+    'Baixa motivação e risco de evasão': 'Baixa motivação',
+    'Frequência regular e boa permanência': 'Frequência e permanente',
+    'Frequência irregular e evasões significativas': 'Frequência irregular',
+    'Realizou com autonomia em várias situações': 'Realizou com autonomia',
+    'Realizou com alguma ajuda': 'Realizou com ajuda',
+    'Dependeu de ajuda constante': 'Dependeu de ajuda',
+    'Demonstrou iniciativa e envolvimento': 'Demonstrou iniciativa',
+    'Tentou com incentivo': 'Tentou com incentivo',
+    'Demonstrou insegurança e resistência': 'Insegurança e resistência',
+    'Persistiu e compreendeu o erro como parte da aprendizagem': 'Persistiu e superou',
+    'Persistiu com apoio': 'Persistiu com apoio',
+    'Desistiu com facilidade': 'Desistiu facilmente',
+    'Participou e cooperou ativamente com os colegas': 'Participou ativamente',
+    'Interagiu quando estimulado(a)': 'Interagiu sob estimulação',
+    'Apresentou pouca interação': 'Pouca interação',
+    'Reconhecimento claro e frequente com usos práticos': 'Reconhecimento frequente',
+    'Reconhecimento parcial': 'Reconhecimento parcial',
+    'Pouco reconhecimento': 'Pouco reconhecimento',
+    'Predominância nos níveis mais avançados': 'Níveis avançados',
+    'Distribuição equilibrada entre níveis': 'Distribuição entre níveis',
+    'Predominância nos níveis iniciais': 'Níveis iniciais'
+}
+    
+# Atribuição Semântica de Cores (Positivo = Verde, Neutro = Amarelo, Crítico = Vermelho)
+cores_socio = {k: COLORS['secondary'] for k in [
+    'Demonstra motivação', 'Frequentes e pontuais', 'Realiza com autonomia',
+    'Tenta com iniciativa', 'Persiste e aceita o erro', 'Participa e coopera', 'Reconhece claramente',
+    'Boa motivação e interesse', 'Frequência e permanente', 'Realizou com autonomia', 'Demonstrou iniciativa',
+    'Persistiu e superou', 'Participou ativamente', 'Reconhecimento frequente', 'Níveis avançados'
+]}
+cores_socio.update({k: COLORS['risco_medio'] for k in [
+    'Demonstra interesse', 'Frequência sem faltas', 'Realiza com ajuda', 'Tenta com apoio',
+    'Persiste com frustração', 'Participa quando estimulado(a)', 'Reconhece algumas vezes',
+    'Realizou com ajuda', 'Tentou com incentivo', 'Persistiu com apoio', 'Interagiu sob estimulação',
+    'Reconhecimento parcial', 'Distribuição entre níveis'
+]})
+cores_socio.update({k: COLORS['risco_alto'] for k in [
+    'Demonstra desmotivação', 'Frequência com faltas', 'Depende de ajuda', 'Demonstra insegurança', 'Desiste facilmente',
+    'Evita interações', 'Não reconhece', 'Baixa motivação', 'Frequência irregular', 'Dependeu de ajuda',
+    'Insegurança e resistência', 'Desistiu facilmente', 'Pouca interação', 'Pouco reconhecimento',
+    'Níveis iniciais'
+]})
+
+# Dicionário de avaliações
+dic_aval = {'diag_entr_result_nivel': 'Diagnóstica', 'forma_1_result_nivel': 'Formativa 1', 'forma_2_result_nivel': 'Formativa 2', 'forma_3_result_nivel': 'Formativa 3', 'forma_4_result_nivel': 'Formativa 4', 'diag_said_result_nivel': 'Saída'}
+
 # =============================================================================
-# 2. FUNÇÕES AUXILIARES DE NEGÓCIO E UI (Clean Code)
+# 2. FUNÇÕES AUXILIARES DE NEGÓCIO E UI
 # =============================================================================
+def limpar_filtros():
+    for _, _, key, default in FILTROS_CONFIG:
+        st.session_state[key] = default
+
 def extrair_dificuldades(valor):
     if pd.isna(valor): return []
     texto = str(valor).strip()
@@ -125,16 +210,18 @@ def carregar_dados():
         df_turmas_limpo = df_turmas.drop(columns=colunas_duplicadas)
         
         df_merged = pd.merge(df_alfab, df_turmas_limpo, left_on='turma', right_on='ds_turma', how='left')
+
+        df_turmas_completo = df_turmas.rename(columns={'ds_turma': 'turma', 'municipio': 'turma_municipio'})
         
-        # --- NOVO: Carimbo de tempo atrelado ao ciclo de cache ---
+        # --- Carimbo de tempo atrelado ao ciclo de cache ---
         fuso_br = timezone(timedelta(hours=-3))
         carimbo_tempo = datetime.now(fuso_br).strftime("%d/%m/%Y às %H:%M:%S")
         
-        return df_merged, carimbo_tempo # Agora a função devolve duas coisas
+        return df_merged, carimbo_tempo, df_turmas_completo
     except Exception as e:
         st.error(f"❌ ERRO NO CRUZAMENTO DAS BASES: Detalhe técnico: {e}")
         st.stop()
-        
+
 @st.cache_data(show_spinner="Aplicando regras operacionais...")
 def processar_regras_negocio(df):
     df_clean = df.copy()
@@ -230,8 +317,9 @@ def calcular_ipa_dinamico(df):
 # Execução do Motor de Dados
 # =============================================================================
 # Desempacota o DataFrame e o horário congelado pelo cache
-df_bruto, horario_extracao = carregar_dados() 
+df_bruto, horario_extracao, df_turmas_bruto = carregar_dados()
 df_final = calcular_ipa_dinamico(processar_regras_negocio(df_bruto))
+df_turmas_final = processar_regras_negocio(df_turmas_bruto)
 
 # =============================================================================
 # 4. RENDERIZAÇÃO DA INTERFACE (UI)
@@ -246,30 +334,34 @@ st.sidebar.markdown("---")
 st.sidebar.header("🎛️ Filtros de Análise")
 
 # 1. Inicializamos a memória incluindo o filtro_fase
-if 'filtro_fase' not in st.session_state: st.session_state['filtro_fase'] = 'Todas'
-for key in ['filtro_municipio', 'filtro_cons', 'filtro_esp', 'filtro_coord', 'filtro_alfab']:
-    if key not in st.session_state: st.session_state[key] = 'Todos'
-if 'filtro_turma' not in st.session_state: st.session_state['filtro_turma'] = 'Todas'
+for _, _, key, default in FILTROS_CONFIG:
+    st.session_state.setdefault(key, default)
 
 st.sidebar.button("🔄 Limpar Todos os Filtros", on_click=limpar_filtros, use_container_width=True)
 
 df_filtrado = df_final.copy()
+df_turmas_filtrado = df_turmas_final.copy()
 
-# 2. Adicionamos a tupla da Fase no topo da lista inteligente de filtros
-filtros = [
-    ('fase_programa', 'Fase do Programa:', 'filtro_fase', 'Todas'),
-    ('turma_municipio', 'Município:', 'filtro_municipio', 'Todos'),
-    ('consultor', 'Consultor:', 'filtro_cons', 'Todos'),
-    ('especialista', 'Especialista:', 'filtro_esp', 'Todos'),
-    ('coordenador', 'Coordenador:', 'filtro_coord', 'Todos'),
-    ('alfabetizador', 'Alfabetizador:', 'filtro_alfab', 'Todos'),
-    ('turma', 'Turma:', 'filtro_turma', 'Todas')
-]
+for col, label, key, default in FILTROS_CONFIG:
+    opcoes_set = set()
+    if col in df_filtrado.columns:
+        opcoes_set.update(df_filtrado[col].dropna().unique())
+    if col in df_turmas_filtrado.columns:
+        opcoes_set.update(df_turmas_filtrado[col].dropna().unique())
 
-for col, label, key, default in filtros:
-    opcoes = [default] + sorted(df_filtrado[col].dropna().unique().tolist()) if col in df_filtrado.columns else [default]
+    opcoes = [default] + sorted(opcoes_set)
     selecionado = st.sidebar.selectbox(label, opcoes, key=key)
-    if selecionado != default: df_filtrado = df_filtrado[df_filtrado[col] == selecionado]
+
+    if selecionado != default:
+        if col in df_filtrado.columns:
+            df_filtrado = df_filtrado[df_filtrado[col] == selecionado]
+        if col in df_turmas_filtrado.columns:
+            df_turmas_filtrado = df_turmas_filtrado[df_turmas_filtrado[col] == selecionado]
+        else:
+            # Fallback caso algum filtro só exista na base de alfabetizandos
+            df_turmas_filtrado = df_turmas_filtrado[
+                df_turmas_filtrado['turma'].isin(df_filtrado['turma'].unique())
+            ]
 
 st.sidebar.info(f"Mostrando dados de **{df_filtrado.shape[0]}** alfabetizandos matriculados.")
 
@@ -288,8 +380,8 @@ else:
     mascara_inativas = pd.Series(False, index=df_filtrado.index)
 
 # Contagem independente para os KPIs
-qtd_encerradas_dinamica = df_filtrado[mascara_encerrada]['turma'].nunique()
-qtd_concluidas_dinamica = df_filtrado[mascara_concluida]['turma'].nunique()
+qtd_encerradas_dinamica = df_turmas_filtrado[df_turmas_filtrado['situacao_turma'] == 'Encerrada']['turma'].nunique()
+qtd_concluidas_dinamica = df_turmas_filtrado[df_turmas_filtrado['situacao_turma'] == 'Concluída']['turma'].nunique()
 
 # 2. O painel principal (frequência, notas) só deve avaliar as turmas vigentes (nem encerradas, nem concluídas)
 df_vigentes = df_filtrado[~mascara_inativas]
@@ -297,7 +389,6 @@ df_reais = df_filtrado[~mascara_encerrada]
 
 # 3. Calculamos os alunos ativos (excluindo os evadidos) apenas das turmas vigentes
 df_ativos = df_reais[df_reais['status_alfabetizando'] != 'EVADIDO'].copy()
-df_em_funcionamento = df_vigentes[df_vigentes['status_alfabetizando'] != 'EVADIDO'].copy()
 
 total_mat = df_filtrado.shape[0]
 total_atv = df_ativos.shape[0]
@@ -312,7 +403,7 @@ st.subheader("🎯 Visão Geral, Engajamento e Retenção")
 
 possiveis_desistentes = df_ativos[df_ativos['taxa_frequencia'] < 50].shape[0]
 
-# Dividindo o topo em 8 colunas agora
+# Dividindo o topo em 9 colunas agora
 c1, c2, c3, c4, c5, c6, c7, c8, c9 = st.columns(9)
 
 c1.metric("Total Inscritos", f"{total_mat}")
@@ -406,77 +497,6 @@ prefixo_socio = 'socio_entr' if tipo_socio == "Socioemocional de Entrada" else '
 if f'{prefixo_socio}_q1' not in df_ativos.columns:
     st.info(f"Os dados da {tipo_socio} não estão disponíveis para este filtro ou ainda não foram carregados.")
 else:
-    # 3. Dicionário de Mapeamento Unificado (Baseado no .txt fornecido)
-    # Corrigi pequenos erros de digitação (ex: 'Demosntra') para garantir qualidade visual
-    mapeamento_textos = {
-        # Variáveis da Socioemocional de Entrada
-        'Demonstra motivação constante e desejo de continuar estudando': 'Demonstra motivação',
-        'Demonstra interesse, mas com oscilações': 'Demonstra interesse',
-        'Demonstra desmotivação ou desejo de interromper': 'Demonstra desmotivação',
-        'São frequentes e pontuais': 'Frequentes e pontuais',
-        'Frequência regular sem nenhuma falta': 'Frequência sem faltas',
-        'Frequência regular com algumas faltas': 'Frequência com faltas',
-        'Realiza com alguma ajuda': 'Realiza com ajuda',
-        'Realiza com autonomia na maioria das situações': 'Realiza com autonomia',
-        'Depende de ajuda constante': 'Depende de ajuda',
-        'Tenta com apoio e incentivo': 'Tenta com apoio',
-        'Tenta com iniciativa própria': 'Tenta com iniciativa',
-        'Demonstra insegurança e evita tentar': 'Demonstra insegurança',
-        'Persiste e aceita o erro como parte da aprendizagem': 'Persiste e aceita o erro',
-        'Persiste, mas demonstra frustração': 'Persiste com frustração',
-        'Desiste facilmente': 'Desiste facilmente',
-        'Participa ativamente e coopera com os colegas': 'Participa e coopera',
-        'Participa quando estimulado(a)': 'Participa quando estimulado(a)',
-        'Evita interações': 'Evita interações',
-        'Reconhece claramente e relata usos práticos': 'Reconhece claramente',
-        'Reconhece em algumas situações': 'Reconhece algumas vezes',
-        'Não reconhece': 'Não reconhece',
-        
-        # Variáveis da Socioemocional de Saída
-        'Boa motivação e interesse constante': 'Boa motivação e interesse',
-        'Baixa motivação e risco de evasão': 'Baixa motivação',
-        'Frequência regular e boa permanência': 'Frequência e permanente',
-        'Frequência irregular e evasões significativas': 'Frequência irregular',
-        'Realizou com autonomia em várias situações': 'Realizou com autonomia',
-        'Realizou com alguma ajuda': 'Realizou com ajuda',
-        'Dependeu de ajuda constante': 'Dependeu de ajuda',
-        'Demonstrou iniciativa e envolvimento': 'Demonstrou iniciativa',
-        'Tentou com incentivo': 'Tentou com incentivo',
-        'Demonstrou insegurança e resistência': 'Insegurança e resistência',
-        'Persistiu e compreendeu o erro como parte da aprendizagem': 'Persistiu e superou',
-        'Persistiu com apoio': 'Persistiu com apoio',
-        'Desistiu com facilidade': 'Desistiu facilmente',
-        'Participou e cooperou ativamente com os colegas': 'Participou ativamente',
-        'Interagiu quando estimulado(a)': 'Interagiu sob estimulação',
-        'Apresentou pouca interação': 'Pouca interação',
-        'Reconhecimento claro e frequente com usos práticos': 'Reconhecimento frequente',
-        'Reconhecimento parcial': 'Reconhecimento parcial',
-        'Pouco reconhecimento': 'Pouco reconhecimento',
-        'Predominância nos níveis mais avançados': 'Níveis avançados',
-        'Distribuição equilibrada entre níveis': 'Distribuição entre níveis',
-        'Predominância nos níveis iniciais': 'Níveis iniciais'
-    }
-    
-    # Atribuição Semântica de Cores (Positivo = Verde, Neutro = Amarelo, Crítico = Vermelho)
-    cores_socio = {k: COLORS['secondary'] for k in [
-        'Demonstra motivação', 'Frequentes e pontuais', 'Realiza com autonomia',
-        'Tenta com iniciativa', 'Persiste e aceita o erro', 'Participa e coopera', 'Reconhece claramente',
-        'Boa motivação e interesse', 'Frequência e permanente', 'Realizou com autonomia', 'Demonstrou iniciativa',
-        'Persistiu e superou', 'Participou ativamente', 'Reconhecimento frequente', 'Níveis avançados'
-    ]}
-    cores_socio.update({k: COLORS['risco_medio'] for k in [
-        'Demonstra interesse', 'Frequência sem faltas', 'Realiza com ajuda', 'Tenta com apoio',
-        'Persiste com frustração', 'Participa quando estimulado(a)', 'Reconhece algumas vezes',
-        'Realizou com ajuda', 'Tentou com incentivo', 'Persistiu com apoio', 'Interagiu sob estimulação',
-        'Reconhecimento parcial', 'Distribuição entre níveis'
-    ]})
-    cores_socio.update({k: COLORS['risco_alto'] for k in [
-        'Demonstra desmotivação', 'Frequência com faltas', 'Depende de ajuda', 'Demonstra insegurança', 'Desiste facilmente',
-        'Evita interações', 'Não reconhece', 'Baixa motivação', 'Frequência irregular', 'Dependeu de ajuda',
-        'Insegurança e resistência', 'Desistiu facilmente', 'Pouca interação', 'Pouco reconhecimento',
-        'Níveis iniciais'
-    ]})
-
     # Titulos generalistas que funcionam perfeitamente para Entrada e Saída
     titulos = ["1. Motivação", "2. Assiduidade", "3. Autonomia", "4. Iniciativa", "5. Persistência", "6. Participação", "7. Usos Práticos", "8. Aquisição (Letramento)"]
     
@@ -531,7 +551,6 @@ col_niveis = [col for col in df_ativos.columns if col.endswith('_result_nivel')]
 if col_niveis:
     st.markdown("---")
     st.subheader("📈 Desempenho e Aplicação de Avaliações")
-    dic_aval = {'diag_entr_result_nivel': 'Diagnóstica', 'forma_1_result_nivel': 'Formativa 1', 'forma_2_result_nivel': 'Formativa 2', 'forma_3_result_nivel': 'Formativa 3', 'forma_4_result_nivel': 'Formativa 4', 'diag_said_result_nivel': 'Saída'}
     opc_aval = {k: v for k, v in dic_aval.items() if k in col_niveis}
     aval_sel = st.selectbox("Selecione a Avaliação:", options=list(opc_aval.keys()), format_func=lambda x: opc_aval[x])
     
@@ -587,12 +606,8 @@ if col_niveis:
         with col_exp2:
             with st.expander(f"✅ {len(df_realizadas)} turmas com lançamentos iniciados"):
                 # Formatação visual: Arredonda a porcentagem e adiciona o símbolo %
-                df_realizadas['Taxa_Cobertura'] = df_realizadas['Taxa_Cobertura'].apply(lambda x: f"{x:.1f}%")
-                
-                # Ordena da menor cobertura para a maior (para destacar quem lançou pouco)
-                df_realizadas = df_realizadas.sort_values('Realizados', ascending=True)
-                
-                df_realizadas = df_realizadas[['turma_municipio', 'turma', 'coordenador','alfabetizador', 'Realizados', 'Total_Alunos', 'Taxa_Cobertura']].sort_values('turma_municipio', ascending=True)
+                df_realizadas['Taxa_Cobertura'] = df_realizadas['Taxa_Cobertura'].apply(lambda x: f"{x:.1f}%")                
+                df_realizadas = df_realizadas[['turma_municipio', 'turma', 'coordenador','alfabetizador', 'Realizados', 'Total_Alunos', 'Taxa_Cobertura']].sort_values(['turma_municipio', 'Realizados'], ascending=True)
                 df_realizadas = df_realizadas.rename(columns={'turma_municipio': 'Município', 'turma': 'Turma', 'coordenador': 'Coordenador','alfabetizador': 'Alfabetizador', 'Realizados': 'Lançamentos', 'Total_Alunos': 'Total Alfabetizandos', 'Taxa_Cobertura': 'Cobertura (%)'})
                 st.dataframe(df_realizadas, use_container_width=True, hide_index=True)
 
